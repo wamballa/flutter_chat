@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 final _firestore = FirebaseFirestore.instance;
+User loggedInUser;
 
 class ChatScreen extends StatefulWidget {
   static String id = 'chat_screen';
@@ -17,7 +18,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final _auth = FirebaseAuth.instance;
-  User loggedInUser;
+
   String messageText;
   final textEditingController = TextEditingController();
 
@@ -47,13 +48,13 @@ class _ChatScreenState extends State<ChatScreen> {
   //   }
   // }
 
-  void messagesStream() async {
-    await for (var snapshot in _firestore.collection('messages').snapshots()) {
-      for (var message in snapshot.docs) {
-        print(message.data());
-      }
-    }
-  }
+  // void messagesStream() async {
+  //   await for (var snapshot in _firestore.collection('messages').snapshots()) {
+  //     for (var message in snapshot.docs) {
+  //       print(message.data());
+  //     }
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -65,9 +66,9 @@ class _ChatScreenState extends State<ChatScreen> {
             icon: Icon(Icons.close),
             onPressed: () {
               //Implement logout functionality
-              messagesStream();
-              // _auth.signOut();
-              // Navigator.pop(context);
+              // messagesStream();
+              _auth.signOut();
+              Navigator.pop(context);
             },
           ),
         ],
@@ -87,7 +88,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 children: <Widget>[
                   Expanded(
                     child: TextField(
-                      controller: textEditingController,
+                      controller: textEditingController.,
                       onChanged: (value) {
                         //Do something with the user input.
                         messageText = value;
@@ -102,6 +103,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       _firestore.collection('messages').add({
                         'text': messageText,
                         'sender': loggedInUser.email,
+                        // 'ts': FieldValue.serverTimestamp(),
+                        'timeStamp': Timestamp.now(),
                       });
                     },
                     child: Text(
@@ -123,7 +126,11 @@ class MessagesStream extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: _firestore.collection('messages').snapshots(),
+      // stream: _firestore.collection('messages').snapshots(),
+      stream: _firestore
+          .collection('messages')
+          .orderBy('timeStamp', descending: true)
+          .snapshots(),
       builder: (BuildContext context, AsyncSnapshot snapshot) {
         List<MessageBubble> messageBubbles = [];
         if (!snapshot.hasData) {
@@ -137,18 +144,23 @@ class MessagesStream extends StatelessWidget {
         for (var message in messages) {
           final messageText = message['text'];
           final messageSender = message['sender'];
+          final Timestamp messageTime = message['timeStamp'] as Timestamp;
+          final currentUser = loggedInUser.email;
           // final messageWidget =
           //     Text('$messageText from $messageSender');
 
           final messageBubble = MessageBubble(
             text: messageText,
             sender: messageSender,
+            timeStamp: messageTime,
+            isMe: currentUser == messageSender,
           );
           messageBubbles.add(messageBubble);
         }
 
         return Expanded(
           child: ListView(
+            reverse: true,
             padding: EdgeInsets.symmetric(horizontal: 10, vertical: 20),
             children: messageBubbles,
           ),
@@ -159,17 +171,20 @@ class MessagesStream extends StatelessWidget {
 }
 
 class MessageBubble extends StatelessWidget {
-  MessageBubble({this.sender, this.text});
+  MessageBubble({this.sender, this.text, this.isMe, this.timeStamp});
 
   final String sender;
   final String text;
+  final bool isMe;
+  final Timestamp timeStamp;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.all(10.0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment:
+            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           Text(
             sender,
@@ -179,9 +194,20 @@ class MessageBubble extends StatelessWidget {
             ),
           ),
           Material(
-            borderRadius: BorderRadius.circular(20.0),
-            elevation: 8,
-            color: Colors.lightBlueAccent,
+            borderRadius: isMe
+                ? BorderRadius.only(
+                    topLeft: Radius.circular(30),
+                    bottomLeft: Radius.circular(30),
+                    bottomRight: Radius.circular(30),
+                  )
+                : BorderRadius.only(
+                    topRight: Radius.circular(30),
+                    bottomLeft: Radius.circular(30),
+                    bottomRight: Radius.circular(30),
+                  ),
+            elevation: 5,
+            // color: Colors.lightBlueAccent,
+            color: isMe ? Colors.lightBlueAccent : Colors.white,
             child: Padding(
               padding: EdgeInsets.symmetric(
                 horizontal: 10,
@@ -190,10 +216,21 @@ class MessageBubble extends StatelessWidget {
               child: Text(
                 text,
                 style: TextStyle(
-                  color: Colors.white,
+                  color: isMe ? Colors.white : Colors.black54,
                   fontSize: 15,
                 ),
               ),
+            ),
+          ),
+          Text(
+            timeStamp.toDate().hour.toString() +
+                ':' +
+                ((timeStamp.toDate().minute < 10)
+                    ? '0' + timeStamp.toDate().minute.toString()
+                    : timeStamp.toDate().minute.toString()),
+            style: TextStyle(
+              fontSize: 12.0,
+              color: Colors.black54,
             ),
           ),
         ],
